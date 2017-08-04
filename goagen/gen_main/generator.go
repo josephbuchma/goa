@@ -144,6 +144,7 @@ func GenerateController(force, regen bool, appPkg, outDir, pkg, name string, r *
 	if err != nil {
 		return "", err
 	}
+	defer file.Close()
 
 	elems := strings.Split(appPkg, "/")
 	pkgName := elems[len(elems)-1]
@@ -263,6 +264,7 @@ func (g *Generator) createMainFile(mainFile string, funcs template.FuncMap) erro
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 	funcs["getPort"] = func(hostport string) string {
 		_, port, err := net.SplitHostPort(hostport)
 		if err != nil {

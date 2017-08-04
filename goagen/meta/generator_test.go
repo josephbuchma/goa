@@ -50,7 +50,9 @@ var _ = Describe("Run", func() {
 			designPackage, err := designWorkspace.NewPackage(designPkgPath)
 			Ω(err).ShouldNot(HaveOccurred())
 			if designPackageSource != "" {
-				file := designPackage.CreateSourceFile("design.go")
+				file, err := designPackage.CreateSourceFile("design.go")
+				Ω(err).ShouldNot(HaveOccurred())
+				defer file.Close()
 				err = ioutil.WriteFile(file.Abs(), []byte(designPackageSource), 0655)
 				Ω(err).ShouldNot(HaveOccurred())
 			}
