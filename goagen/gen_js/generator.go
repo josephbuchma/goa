@@ -138,6 +138,7 @@ func (g *Generator) generateJS(jsFile string) (_ *design.ActionDefinition, err e
 	if err != nil {
 		return
 	}
+	defer file.Close()
 	g.genfiles = append(g.genfiles, jsFile)
 
 	data := map[string]interface{}{
@@ -190,6 +191,7 @@ func (g *Generator) generateIndexHTML(htmlFile string, exampleAction *design.Act
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 	g.genfiles = append(g.genfiles, htmlFile)
 
 	argNames := params(exampleAction)
@@ -249,6 +251,7 @@ func (g *Generator) generateExample() error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 	imports := []*codegen.ImportSpec{
 		codegen.SimpleImport("net/http"),
 		codegen.SimpleImport("github.com/dimfeld/httptreemux"),

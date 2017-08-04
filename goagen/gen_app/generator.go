@@ -129,6 +129,7 @@ func (g *Generator) generateContexts() error {
 	if err != nil {
 		panic(err) // bug
 	}
+	defer ctxWr.Close()
 	title := fmt.Sprintf("%s: Application Contexts", g.API.Context())
 	imports := []*codegen.ImportSpec{
 		codegen.SimpleImport("fmt"),
@@ -210,6 +211,7 @@ func (g *Generator) generateControllers() error {
 	if err != nil {
 		panic(err) // bug
 	}
+	defer ctlWr.Close()
 	title := fmt.Sprintf("%s: Application Controllers", g.API.Context())
 	imports := []*codegen.ImportSpec{
 		codegen.SimpleImport("net/http"),
@@ -321,6 +323,7 @@ func (g *Generator) generateSecurity() error {
 	if err != nil {
 		panic(err) // bug
 	}
+	defer secWr.Close()
 
 	title := fmt.Sprintf("%s: Application Security", g.API.Context())
 	imports := []*codegen.ImportSpec{
@@ -347,6 +350,7 @@ func (g *Generator) generateHrefs() error {
 	if err != nil {
 		panic(err) // bug
 	}
+	defer resWr.Close()
 	title := fmt.Sprintf("%s: Application Resource Href Factories", g.API.Context())
 	imports := []*codegen.ImportSpec{
 		codegen.SimpleImport("fmt"),
@@ -386,6 +390,7 @@ func (g *Generator) generateMediaTypes() error {
 	if err != nil {
 		panic(err) // bug
 	}
+	defer mtWr.Close()
 	title := fmt.Sprintf("%s: Application Media Types", g.API.Context())
 	imports := []*codegen.ImportSpec{
 		codegen.SimpleImport("github.com/goadesign/goa"),
@@ -422,6 +427,7 @@ func (g *Generator) generateUserTypes() error {
 	if err != nil {
 		panic(err) // bug
 	}
+	defer utWr.Close()
 	title := fmt.Sprintf("%s: Application User Types", g.API.Context())
 	imports := []*codegen.ImportSpec{
 		codegen.SimpleImport("fmt"),

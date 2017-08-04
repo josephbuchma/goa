@@ -39,6 +39,7 @@ func (g *Generator) generateMain(mainFile string, clientPkg, cliPkg string, func
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 	if err := file.WriteHeader("", "main", imports); err != nil {
 		return err
 	}
@@ -95,6 +96,7 @@ func (g *Generator) generateCommands(commandsFile string, clientPkg string, func
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	funcs["defaultRouteParams"] = defaultRouteParams
 	funcs["defaultRouteTemplate"] = defaultRouteTemplate

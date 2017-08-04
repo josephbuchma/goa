@@ -228,6 +228,7 @@ func (g *Generator) generateClient(clientFile string, clientPkg string, funcs te
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 	clientTmpl := template.Must(template.New("client").Funcs(funcs).Parse(clientTmpl))
 
 	// Compute list of encoders and decoders
@@ -315,6 +316,7 @@ func (g *Generator) generateResourceClient(pkgDir string, res *design.ResourceDe
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 	imports := []*codegen.ImportSpec{
 		codegen.SimpleImport("bytes"),
 		codegen.SimpleImport("encoding/json"),
