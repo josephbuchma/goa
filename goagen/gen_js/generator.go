@@ -293,31 +293,38 @@ func params(action *design.ActionDefinition) []string {
 	return params
 }
 
-const moduleT = `// This module exports functions that give access to the {{.API.Name}} API hosted at {{.API.Host}}.
+const moduleT = `import axios from 'react-native-axios'
+
+// This module exports functions that give access to the {{.API.Name}} API hosted at {{.API.Host}}.
 // It uses the axios javascript library for making the actual HTTP requests.
-define(['axios'] , function (axios) {
-  function merge(obj1, obj2) {
-    var obj3 = {};
-    for (var attrname in obj1) { obj3[attrname] = obj1[attrname]; }
-    for (var attrname in obj2) { obj3[attrname] = obj2[attrname]; }
-    return obj3;
-  }
+function merge(obj1, obj2) {
+  var obj3 = {};
+  for (var attrname in obj1) { obj3[attrname] = obj1[attrname]; }
+  for (var attrname in obj2) { obj3[attrname] = obj2[attrname]; }
+  return obj3;
+}
 
-  return function (scheme, host, timeout) {
-    scheme = scheme || '{{.Scheme}}';
-    host = host || '{{.Host}}';
-    timeout = timeout || {{.Timeout}};
+function timeoutPromise(timeout, err, promise) {
+  return new Promise(function(resolve,reject) {
+    promise.then(resolve,reject);
+    setTimeout(reject.bind(null,err), timeout);
+  });
+}
 
-    // Client is the object returned by this module.
-    var client = axios;
+export default function (scheme, host, timeout) {
+  scheme = scheme || '{{.Scheme}}';
+  host = host || '{{.Host}}';
+  timeout = timeout || {{.Timeout}};
 
-    // URL prefix for all API requests.
-    var urlPrefix = scheme + '://' + host;
+  // Client is the object returned by this module.
+  var client = axios;
+
+  // URL prefix for all API requests.
+  var urlPrefix = scheme + '://' + host;
 `
 
 const moduleTend = `  return client;
-  };
-});
+};
 `
 
 const jsFuncsT = `{{$params := params .Action}}
@@ -328,10 +335,10 @@ const jsFuncsT = `{{$params := params .Action}}
   {{end}}// config is an optional object to be merged into the config built by the function prior to making the request.
   // The content of the config object is described here: https://github.com/mzabriskie/axios#request-api
   // This function returns a promise which raises an error if the HTTP response is a 4xx or 5xx.
-  client.{{$name}} = function (path{{if .Action.Payload}}, data{{end}}{{if $params}}, {{join $params ", "}}{{end}}, config) {
+  client.{{$name}} = function ({{if .Action.Payload}}data{{end}}{{if $params}}{{if .Action.Payload}}, {{end}}{{join $params ", "}}, {{end}}config) {
     var cfg = {
       timeout: timeout,
-      url: urlPrefix + path,
+      url: urlPrefix + "{{(index .Action.Routes 0).FullPath}}",
       method: '{{toLower (index .Action.Routes 0).Verb}}',
 {{if $params}}      params: {
 {{range $index, $param := $params}}{{if $index}},
