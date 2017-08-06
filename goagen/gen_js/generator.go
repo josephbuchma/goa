@@ -293,8 +293,7 @@ func params(action *design.ActionDefinition) []string {
 	return params
 }
 
-const moduleT = `import axios from 'react-native-axios'
-
+const moduleT = `
 // This module exports functions that give access to the {{.API.Name}} API hosted at {{.API.Host}}.
 // It uses the axios javascript library for making the actual HTTP requests.
 function merge(obj1, obj2) {
@@ -317,7 +316,7 @@ export default function (scheme, host, timeout) {
   timeout = timeout || {{.Timeout}};
 
   // Client is the object returned by this module.
-  var client = axios;
+  var client = {};
 
   // URL prefix for all API requests.
   var urlPrefix = scheme + '://' + host;
@@ -338,19 +337,26 @@ const jsFuncsT = `{{$params := params .Action}}
   client.{{$name}} = function ({{if .Action.Payload}}data{{end}}{{if $params}}{{if .Action.Payload}}, {{end}}{{join $params ", "}}, {{end}}config) {
     var cfg = {
       timeout: timeout,
-      url: urlPrefix + "{{(index .Action.Routes 0).FullPath}}",
       method: '{{toLower (index .Action.Routes 0).Verb}}',
-{{if $params}}      params: {
+{{if $params}}      qs: {
 {{range $index, $param := $params}}{{if $index}},
 {{end}}        {{$param}}: {{$param}}{{end}}
       },
 {{end}}{{if .Action.Payload}}    data: data,
-{{end}}      responseType: 'json'
+{{end}}      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
     };
     if (config) {
       cfg = merge(cfg, config);
+      if (config.data) {
+        config.body = JSON.stringify(config.data);
+        config.data = undefined;
+      }
     }
-    return client(cfg);
+    var url = urlPrefix + "{{(index .Action.Routes 0).FullPath}}";
+    return timeoutPromise(cfg.timeout, "timeout", fetch(url, cfg))
   }
 `
 
