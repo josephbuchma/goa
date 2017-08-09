@@ -262,6 +262,9 @@ func (f *SourceFile) Close() {
 // FormatCode performs the equivalent of "goimports -w" on the source file.
 func (f *SourceFile) FormatCode() error {
 	// Parse file into AST
+	if strings.Index(f.Name, ".js") > 0 {
+		return nil
+	}
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, f.Abs(), nil, parser.ParseComments)
 	if err != nil {
