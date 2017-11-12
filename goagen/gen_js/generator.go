@@ -412,20 +412,21 @@ const jsFuncsT = `{{$params := params .Action}}{{$name := printf "%s%s" .Action.
   {{ jsify $name false}}(path: string, {{if .Action.Payload}}data: {{jstypename .Action.Payload nil 0 false}}, {{end}}{{if $params}}{{if .Action.Payload}}, {{end}}query: {{"{"}}{{join $params ", "}}{{"}"}}, {{end}}config?: Object) {
     let cfg = {
       method: '{{toLower (index .Action.Routes 0).Verb}}',
-{{if .Action.Payload}}      data: data,
+{{if .Action.Payload}}      body: JSON.stringify(data),
 {{end}}
     }
     if (config) {
       Object.assign(cfg, config);
     }
-    {{if $params}}path += '?' + Object.keys(query).map((k)=>k+'='+query[k]).join('&'){{end}}
+    {{if $params}}path += '?' + queryString.stringify(query){{end}}
     return this.request(path, cfg)
   }
 `
 
 const moduleT = `
 // @flow
-import { mergeDeepRight } from 'ramda'
+
+import queryString from 'query-string'
 
 class ApiError extends Error {
   err: error
@@ -494,11 +495,7 @@ class Client {
       }
     };
     if (config) {
-      cfg = mergeDeepRight(cfg, config);
-      if (config.data) {
-        config.body = JSON.stringify(config.data);
-        config.data = undefined;
-      }
+      Object.assign(cfg, config);
     }
     if (this.authHeader) {
       Object.assign(cfg.headers, this.authHeader)
