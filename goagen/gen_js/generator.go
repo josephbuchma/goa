@@ -404,6 +404,24 @@ const jsFuncsT = `{{$params := params .Action}}{{$name := printf "%s%s" .Action.
     return {{jspath .Action}}
   }
 
+  {{$params := params .Action}}{{$name := printf "%s%sRequest" .Action.Name (title .Action.Parent.Name)}}// {{if .Action.Description}}{{.Action.Description}}{{else}}{{$name}} calls the {{.Action.Name}} action of the {{.Action.Parent.Name}} resource.{{end}}
+  {{if .Action.Payload}}// data contains the action payload (request body)
+  {{end}}{{if $params}}// {{join $params ", "}} {{if gt (len $params) 1}}are{{else}}is{{end}} used to build the request query string.
+  {{end}}// config is an optional object to be merged into the config built by the function prior to making the request.
+  // This function returns a promise which raises an error if the HTTP response is a 4xx or 5xx.
+	{{ jsify $name false}}(path: string, {{if .Action.Payload}}data: {{jstypename .Action.Payload nil 0 false}}, {{end}}{{if $params}}{{if .Action.Payload}}, {{end}}query: {{"{"}}{{join $params ", "}}{{"}"}}, {{end}}config?: Object): ApiRequest {
+    let cfg = {
+      method: '{{toLower (index .Action.Routes 0).Verb}}',
+{{if .Action.Payload}}      body: JSON.stringify(data),
+{{end}}
+    }
+    if (config) {
+      Object.assign(cfg, config);
+    }
+    {{if $params}}path += '?' + queryString.stringify(query){{end}}
+    return new ApiRequest(this, path, cfg)
+  }
+
   {{$params := params .Action}}{{$name := printf "%s%s" .Action.Name (title .Action.Parent.Name)}}// {{if .Action.Description}}{{.Action.Description}}{{else}}{{$name}} calls the {{.Action.Name}} action of the {{.Action.Parent.Name}} resource.{{end}}
   {{if .Action.Payload}}// data contains the action payload (request body)
   {{end}}{{if $params}}// {{join $params ", "}} {{if gt (len $params) 1}}are{{else}}is{{end}} used to build the request query string.
@@ -423,42 +441,94 @@ const jsFuncsT = `{{$params := params .Action}}{{$name := printf "%s%s" .Action.
   }
 `
 
-const moduleT = `
-// @flow
+const moduleT = `// @flow
 
 import queryString from 'query-string'
 
-class ApiError extends Error {
-  err: error
-  constructor (err: error) {
-    super(err.detail)
+const autobind = self => {
+  for (const key of Object.getOwnPropertyNames(self.constructor.prototype)) {
+    // $FlowExpectedError
+    const val = self[key]
+    if (key !== 'constructor' && typeof val === 'function') {
+      // $FlowExpectedError
+      self[key] = val.bind(self)
+    }
+  }
+  return self
+}
+
+export class ApiRequest {
+  api: Client
+  url: string
+  config: Object
+
+  constructor (api: Client, url: string, config: Object) {
+    this.api = api
+    this.url = url
+    this.config = config
+
+    autobind(this)
+  }
+
+  do (): Promise<ApiResponse|ApiError> {
+    return this.api.request(this.url, this.config)
   }
 }
 
+export class ApiResponse {
+  // Response
+  raw: {
+    type: string,
+    status: number,
+    ok: boolean,
+    statusText: string,
+    headers: {
+      map: {[string]:string}
+    },
+    url: string
+  }
+  json: Object
+
+  constructor (resp: any, json: Object) {
+    this.raw = resp
+    this.json = json
+  }
+}
+
+export class ApiError extends Error {
+  err: error
+  constructor (err: error) {
+    super(err.detail)
+    this.err = err
+  }
+}
 
 function getResponseError (resp: error): Error {
   return new ApiError(resp)
 }
 
-function timeoutPromise(timeout: number, promise: Promise<*>): Promise<*> {
-  return new Promise((resolve, reject) => {
-    promise.then(resolve, reject)
-    setTimeout((_resp?: Object)=>{
-      reject(new Error('request_timeout'));
-    }, timeout)
-  });
+function unknownError (err: Error): Error {
+  let ae = new ApiError({
+    code: '-1',
+    // a human-readable explanation specific to this occurrence of the problem.
+    detail: err.message,
+    // a unique identifier for this particular occurrence of the problem.
+    id: 'unknown',
+    // a meta object containing non-standard meta-information about the error.
+    meta: {},
+    // the HTTP status code applicable to this problem, expressed as a string value.
+    status: 'unknow error'
+  })
+  return ae
 }
 
-const autobind = self => {
-  for (const key of Object.getOwnPropertyNames(self.constructor.prototype)) {
-    // $FlowExpectedError
-    const val = self[key];
-    if (key !== 'constructor' && typeof val === 'function') {
-      // $FlowExpectedError
-      self[key] = val.bind(self);
-    }
-  }
-  return self;
+function timeoutPromise (timeout: number, promise: Promise<*>): Promise<*> {
+  return new Promise((resolve, reject) => {
+    promise.then(resolve, reject)
+    setTimeout((_resp?: Object) => {
+      reject(new Error('request_timeout'))
+    }, timeout)
+  })
 }
 
 class Client {
@@ -468,42 +538,48 @@ class Client {
   authHeader: Object | null
   urlPrefix: string
 
-  constructor(scheme?: string, host?: string, timeout?: number, authHeader?: Object) {
-    this.scheme = scheme || '{{.Scheme}}'
-    this.host = host || '{{.Host}}'
-    this.timeout = timeout || {{.Timeout}}
+  constructor (scheme?: string, host?: string, timeout?: number, authHeader?: Object) {
+    this.scheme = scheme || 'http'
+    this.host = host || 'localhost:9099'
+    this.timeout = timeout || 20000
     this.authHeader = authHeader || null
-    this.urlPrefix = this.scheme + '://' + this.host;
+    this.urlPrefix = this.scheme + '://' + this.host
 
     autobind(this)
   }
 
-  setAuthHeader(hdr: Object) {
+  setAuthHeader (hdr: Object) {
     this.authHeader = hdr
   }
 
-  resetAuthHeader() {
+  resetAuthHeader () {
     this.authHeader = null
   }
 
-  request(path: string, config?: Object): Promise<Object|ApiError> {
+  request (path: string, config?: Object|null): Promise<ApiResponse|ApiError> {
     let cfg = {
       timeout: this.timeout,
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
       }
-    };
-    if (config) {
-      Object.assign(cfg, config);
     }
     if (this.authHeader) {
       Object.assign(cfg.headers, this.authHeader)
     }
+    if (config) {
+      Object.assign(cfg, config)
+    }
     let url = this.urlPrefix + path
-    let reqp = new Promise((resolve, reject)=>{
-      fetch(url, cfg).then(resolve).catch((resp)=>{
-        reject(getResponseError(resp))
+    let reqp = new Promise((resolve, reject) => {
+      fetch(url, cfg).then((resp) => {
+        if (resp.ok) {
+          resp.json().then((json) => resolve(new ApiResponse(resp, json)))
+        } else {
+          resp.json().then((j) => reject(getResponseError(j)))
+        }
+      }).catch((err) => {
+        reject(unknownError(err))
       })
     })
     return timeoutPromise(cfg.timeout, reqp)
