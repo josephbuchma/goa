@@ -409,7 +409,7 @@ const jsFuncsT = `{{$params := params .Action}}{{$name := printf "%s%s" .Action.
   {{end}}{{if $params}}// {{join $params ", "}} {{if gt (len $params) 1}}are{{else}}is{{end}} used to build the request query string.
   {{end}}// config is an optional object to be merged into the config built by the function prior to making the request.
   // This function returns a promise which raises an error if the HTTP response is a 4xx or 5xx.
-	{{ jsify $name false}}(path: string, {{if .Action.Payload}}data: {{jstypename .Action.Payload nil 0 false}}, {{end}}{{if $params}}{{if .Action.Payload}}, {{end}}query: {{"{"}}{{join $params ", "}}{{"}"}}, {{end}}config?: Object): ApiRequest {
+  {{ jsify $name false}}(path: string{{if .Action.Payload}}, data: {{jstypename .Action.Payload nil 0 false}}{{end}}{{if $params}}, query: {{"{"}}{{join $params ", "}}{{"}"}}{{end}}, config?: Object): ApiRequest {
     let cfg = {
       method: '{{toLower (index .Action.Routes 0).Verb}}',
 {{if .Action.Payload}}      body: JSON.stringify(data),
@@ -427,22 +427,24 @@ const jsFuncsT = `{{$params := params .Action}}{{$name := printf "%s%s" .Action.
   {{end}}{{if $params}}// {{join $params ", "}} {{if gt (len $params) 1}}are{{else}}is{{end}} used to build the request query string.
   {{end}}// config is an optional object to be merged into the config built by the function prior to making the request.
   // This function returns a promise which raises an error if the HTTP response is a 4xx or 5xx.
-  {{ jsify $name false}}(path: string, {{if .Action.Payload}}data: {{jstypename .Action.Payload nil 0 false}}, {{end}}{{if $params}}{{if .Action.Payload}}, {{end}}query: {{"{"}}{{join $params ", "}}{{"}"}}, {{end}}config?: Object) {
-    let cfg = {
-      method: '{{toLower (index .Action.Routes 0).Verb}}',
-{{if .Action.Payload}}      body: JSON.stringify(data),
-{{end}}
-    }
-    if (config) {
-      Object.assign(cfg, config);
-    }
-    {{if $params}}path += '?' + queryString.stringify(query){{end}}
-    return this.request(path, cfg)
+  {{ jsify $name false}}(path: string{{if .Action.Payload}}, data: {{jstypename .Action.Payload nil 0 false}}{{end}}{{if $params}}, query: {{"{"}}{{join $params ", "}}{{"}"}}{{end}}, config?: Object) {
+    return this.{{ jsify $name false}}Request(path{{if .Action.Payload}}, data{{end}}{{if $params}}, query{{end}}, config).do()
+  }
+
+  {{$params := params .Action}}{{$name := printf "%s%s" .Action.Name (title .Action.Parent.Name)}}// {{if .Action.Description}}{{.Action.Description}}{{else}}{{$name}} calls the {{.Action.Name}} action of the {{.Action.Parent.Name}} resource.{{end}}
+  {{if .Action.Payload}}// data contains the action payload (request body)
+  {{end}}{{if $params}}// {{join $params ", "}} {{if gt (len $params) 1}}are{{else}}is{{end}} used to build the request query string.
+  {{end}}// config is an optional object to be merged into the config built by the function prior to making the request.
+  // This function returns a promise which raises an error if the HTTP response is a 4xx or 5xx.
+  {{ jsify $name false}}Action(path: string, {{if .Action.Payload}}data: {{jstypename .Action.Payload nil 0 false}}, {{end}}{{if $params}}{{if .Action.Payload}}, {{end}}query: {{"{"}}{{join $params ", "}}{{"}"}}, {{end}}config?: Object): ApiRequestAction {
+    let req = this.{{ jsify $name false}}Request(path{{if .Action.Payload}}, data{{end}}{{if $params}}, query{{end}}, config)
+    return {type: 'API_REQUEST', id: '{{ jsify $name false}}_'+req.config.method+'_'+req.url,  name: '{{ jsify $name false}}', method: req.config.method, url: req.url, request: req, createdAt: new Date()}
   }
 `
 
 const moduleT = `// @flow
 
+import { call, fork, put, take, select } from 'redux-saga/effects'
 import queryString from 'query-string'
 
 const autobind = self => {
@@ -530,6 +532,103 @@ function timeoutPromise (timeout: number, promise: Promise<*>): Promise<*> {
     }, timeout)
   })
 }
+
+export type ApiRequestAction = {
+  type: 'API_REQUEST',
+  id: string,
+  name: string,
+  url: string,
+  method: string,
+  request: ApiRequest,
+}
+
+export type ApiRequestState = {
+  fetching: bool,
+  error: ApiError | null,
+  response: Object | null,
+  startedAt: Date | null,
+  finishedAt: Date | null,
+}
+
+const ActionTypes = {
+  REQUEST: 'API_REQUEST',
+  REQUEST_SUCCESS: 'API_REQUEST_SUCCES',
+  REQUEST_ERROR: 'API_REQUEST_ERROR'
+}
+
+export const ApiActionTypes = ActionTypes
+
+export const reducer = (state: Object = {}, action: any): any => {
+  if (!action) {
+    return state
+  }
+  let ns = {...state}
+  let req: ApiRequestState = ns[action.id] || {fetching: true, error: null, response: null, startedAt: new Date(), finishedAt: null}
+  if (req) {
+    req = {...req}
+  }
+  ns[action.id] = req
+  switch (action.type) {
+    case 'API_REQUEST_START':
+      return ns
+    case 'API_REQUEST_SUCCESS':
+      req.fetching = false
+      req.finishedAt = new Date()
+      req.response = action.response
+      return ns
+    case 'API_REQUEST_ERROR':
+      req.fetching = false
+      req.finishedAt = new Date()
+      req.error = action.error
+      return ns
+  }
+  return state
+}
+
+function * saga (api: Client): any {
+  while (true) {
+    let action: ApiRequestAction = yield take('API_REQUEST')
+    let state = yield select((s) => s.api)
+    let act = state[action.id]
+    if (act) {
+      if (act.fetching) {
+        continue
+      }
+    }
+    yield put({type: 'API_REQUEST_START', id: action.id })
+    yield fork(runRequest, action)
+  }
+}
+
+function * runRequest (action: ApiRequestAction): any {
+  try {
+    console.log('Executing request...')
+    let resp: ApiResponse = yield call(action.request.do)
+    yield put({type: ActionTypes.REQUEST_SUCCESS, id: action.id, response: resp})
+  } catch (error) {
+    yield put({type: ActionTypes.REQUEST_ERROR, id: action.id, error})
+  }
+}
+
+export const apiSaga = saga
+
+const responseWithID = (id) => (a) => [ActionTypes.REQUEST_SUCCESS, ActionTypes.REQUEST_ERROR].includes(a.type) && a.id === id
+
+const respSuccess = (resp) => resp.type === ActionTypes.REQUEST_SUCCESS
+
+// request is a saga helper for performing requests
+// example:
+//    let {res, err} = yield call(request, api.registerAuthAction(api.registerAuthPath(), action.form))
+// $FlowExpectedError
+export function * request (r: ApiRequestAction) {
+  yield put(r)
+  let res = yield take(responseWithID(r.id))
+  if (respSuccess(res)) {
+    return { res: res.response }
+  }
+  return { err: res.error }
+}
+
 
 class Client {
   scheme: string
